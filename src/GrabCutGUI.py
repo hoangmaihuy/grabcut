@@ -13,6 +13,7 @@ from enum import IntEnum
 from PyQt5.QtWidgets import QFileDialog, QApplication, QMainWindow, QGraphicsScene
 from PyQt5.QtGui import QPixmap, QPen, QColor, QPainterPath, QBrush
 from PyQt5.QtCore import QRectF, QLineF, QPointF
+from GrabCut import GrabCut
 from GrabCutQtDesignerUI import Ui_MainWindow
 
 class EditMode(IntEnum):
@@ -78,7 +79,7 @@ class ImageViewer(QGraphicsScene):
         elif self.mode == EditMode.ADD_F_SEED:
             self.setMask(pos, pos, Trimap.F)
         elif self.mode == EditMode.ADD_B_SEED:
-            self.setMask(pos, Trimap.B)
+            self.setMask(pos, pos, Trimap.B)
         self.addPath(QPainterPath(pos), self.getPen())
 
     def mouseMoveEvent(self, event):
@@ -103,13 +104,13 @@ class ImageViewer(QGraphicsScene):
         pos = event.scenePos()
         self.drawing = False
         if self.mode == EditMode.SET_B_REGION:
-            self.setMask(self.fromPos, pos, Trimap.B)
+            self.toPos = pos
+            self.setMask(self.fromPos, self.toPos, Trimap.B)
 
 class GrabCutGUI(object):
     def __init__(self):
         self.imagePath = None
-        self.imageHeight = None
-        self.imageWidth = None
+        self.grabcut = None
         self.app = QApplication(sys.argv)
         self.MainWindow = QMainWindow()
         self.ImageViewer = ImageViewer()
@@ -131,6 +132,7 @@ class GrabCutGUI(object):
         self.ui.addBackgroundSeedButton.clicked.connect(self.addBackgroundSeed)
         self.ui.addForegroundSeedButton.clicked.connect(self.addForegroundSeed)
         self.ui.clearInputButton.clicked.connect(self.clearInput)
+        self.ui.runButton.clicked.connect(self.runGrabCut)
 
     def openImage(self):
         self.imagePath, _ = QFileDialog.getOpenFileName(self.MainWindow, "Open Image", "" ,"Image files (*.jpg)")
@@ -154,4 +156,16 @@ class GrabCutGUI(object):
         self.ImageViewer.setMode(EditMode.ADD_F_SEED)
 
     def clearInput(self):
-        pass
+        self.ImageViewer.clear()
+
+    def runGrabCut(self):
+        if self.grabcut is None:
+            rect = QRectF(self.ImageViewer.fromPos, self.ImageViewer.toPos).getCoords()
+            rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+            self.grabcut = GrabCut(self.imagePath, rect)
+        savePath = self.grabcut.run()
+        self.clearInput()
+        self.ImageViewer.setImage(savePath)
+
+if __name__ == '__main__':
+    gui = GrabCutGUI()
