@@ -1,9 +1,16 @@
 import os
+from enum import IntEnum
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import sklearn
 import cv2 as cv
+
+class Trimap(IntEnum):
+    U = 0
+    B = 1
+    F = 2
 
 class GrabCut:
     '''
@@ -15,12 +22,15 @@ class GrabCut:
     The unknown pixels is the foreground set.
     - Create foreground and background GMMs based off the sets previously defined.
     '''
-    def __init__(self, imagePath, rect, n_components=5, iterCount=5, useCV=True):
+    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=True):
         self.imagePath = imagePath
-        self.rect = rect
         self.n_components = n_components
         self.iterCount = iterCount
         self.useCV = useCV
+        self.mask = None
+        self.img = None
+        self.bgdModel = np.zeros((1, 65), np.float64)
+        self.fgdModel = np.zeros((1, 65), np.float64)
 
     '''
     Assign a foreground and background GMM cluster to every pixel in the unknown set 
@@ -43,20 +53,25 @@ class GrabCut:
     def graphcut(self):
         pass
 
-    def run(self):
+    def run(self, rect, init_mask):
         if self.useCV:
-            img = cv.imread(self.imagePath)
-            bgdModel = np.zeros((1, 65), np.float64)
-            fgdModel = np.zeros((1, 65), np.float64)
-            mask = np.zeros(img.shape[:2], np.uint8)
-            cv.grabCut(img, mask, self.rect, bgdModel, fgdModel, self.iterCount, cv.GC_INIT_WITH_RECT)
-            mask2 = np.where((mask == 2)|(mask == 0), 0, 1).astype('uint8')
-            img = img*mask2[:, :, np.newaxis]
-            print(img)
+            if self.img is None:
+                self.img = cv.imread(self.imagePath)
+                self.mask = np.zeros(self.img.shape[:2], np.uint8)
+            mode = 0
+            if init_mask is not None:
+                mode = cv.GC_INIT_WITH_MASK
+                self.mask[init_mask == Trimap.B] = cv.GC_BGD
+                self.mask[init_mask == Trimap.F] = cv.GC_FGD
+            if rect is not None:
+                mode = cv.GC_INIT_WITH_RECT
+            cv.grabCut(self.img, self.mask, rect, self.bgdModel, self.fgdModel, self.iterCount, mode)
+            mask2 = np.where((self.mask == 2) | (self.mask == 0), 0, 1).astype('uint8')
+            img = self.img*mask2[:, :, np.newaxis]
             dirname, filename = os.path.split(self.imagePath)
             filename, fileext = os.path.splitext(filename)
-            savePath = os.path.join(dirname, filename) + "_result" + fileext
-            cv.imwrite(savePath, img)
-            return savePath
+            resultPath = os.path.join(dirname, filename) + "_result" + fileext
+            cv.imwrite(resultPath, img)
+            return resultPath
 
 

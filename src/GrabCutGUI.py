@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-
-# Form implementation generated from reading ui file 'grabcut.ui'
-#
-# Created by: PyQt5 UI code generator 5.13.0
-#
-# WARNING! All changes made in this file will be lost!
-
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,19 +5,14 @@ from enum import IntEnum
 from PyQt5.QtWidgets import QFileDialog, QApplication, QMainWindow, QGraphicsScene
 from PyQt5.QtGui import QPixmap, QPen, QColor, QPainterPath, QBrush
 from PyQt5.QtCore import QRectF, QLineF, QPointF
-from GrabCut import GrabCut
-from GrabCutQtDesignerUI import Ui_MainWindow
+from src.GrabCut import GrabCut, Trimap
+from src.GrabCutQtDesignerUI import Ui_MainWindow
 
 class EditMode(IntEnum):
     DEFAULT = 0
     SET_B_REGION = 1
     ADD_B_SEED = 2
     ADD_F_SEED = 3
-
-class Trimap(IntEnum):
-    U = 0
-    B = 1
-    F = 2
 
 class Color:
     RED = QColor(255, 0, 0)
@@ -52,10 +39,9 @@ class ImageViewer(QGraphicsScene):
         self.imagePath = imagePath
         self.addPixmap(QPixmap(imagePath))
         self.image = plt.imread(imagePath)
-        self.mask = np.zeros_like(self.image)
 
     def setMask(self, fromPos, toPos, value):
-        self.mask[int(fromPos.x()):int(toPos.x())][int(fromPos.y()):int(toPos.y())] = int(value)
+        self.mask[int(fromPos.y()):int(toPos.y()), int(fromPos.x()):int(toPos.x())] = int(value)
 
     def getPen(self):
         if self.mode == EditMode.DEFAULT:
@@ -67,7 +53,6 @@ class ImageViewer(QGraphicsScene):
         return self.pen
 
     def mousePressEvent(self, event):
-        print(self.mode)
         if self.mode == EditMode.DEFAULT:
             return
         pos = event.scenePos()
@@ -76,7 +61,9 @@ class ImageViewer(QGraphicsScene):
             self.fromPos = pos
             self.rect = self.addRect(QRectF(pos, pos), self.getPen())
             return
-        elif self.mode == EditMode.ADD_F_SEED:
+        if self.mask is None:
+            self.mask = np.zeros(self.image.shape[:2], np.uint8)
+        if self.mode == EditMode.ADD_F_SEED:
             self.setMask(pos, pos, Trimap.F)
         elif self.mode == EditMode.ADD_B_SEED:
             self.setMask(pos, pos, Trimap.B)
@@ -105,7 +92,10 @@ class ImageViewer(QGraphicsScene):
         self.drawing = False
         if self.mode == EditMode.SET_B_REGION:
             self.toPos = pos
-            self.setMask(self.fromPos, self.toPos, Trimap.B)
+            rect = QRectF(self.fromPos, self.toPos).getCoords()
+            self.rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+            # self.setMask(self.fromPos, self.toPos, Trimap.B)
+            return
 
 class GrabCutGUI(object):
     def __init__(self):
@@ -138,7 +128,7 @@ class GrabCutGUI(object):
         self.imagePath, _ = QFileDialog.getOpenFileName(self.MainWindow, "Open Image", "" ,"Image files (*.jpg)")
         self.ImageViewer.setImage(self.imagePath)
         self.ui.statusbar.showMessage("Opened " + self.imagePath)
-   
+
     def saveImage(self):
         savePath, _ = QFileDialog.getSaveFileName(self.MainWindow, "Save Image As...", "")
         self.ui.statusbar.showMessage("Saved file to " + savePath)
@@ -156,16 +146,17 @@ class GrabCutGUI(object):
         self.ImageViewer.setMode(EditMode.ADD_F_SEED)
 
     def clearInput(self):
+        self.ImageViewer.rect = None
+        self.ImageViewer.mask = None
         self.ImageViewer.clear()
 
     def runGrabCut(self):
         if self.grabcut is None:
-            rect = QRectF(self.ImageViewer.fromPos, self.ImageViewer.toPos).getCoords()
-            rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
-            self.grabcut = GrabCut(self.imagePath, rect)
-        savePath = self.grabcut.run()
+            self.grabcut = GrabCut(self.imagePath)
+        resultPath = self.grabcut.run(self.ImageViewer.rect, self.ImageViewer.mask)
+        self.imagePath = resultPath
         self.clearInput()
-        self.ImageViewer.setImage(savePath)
+        self.ImageViewer.setImage(resultPath)
 
 if __name__ == '__main__':
     gui = GrabCutGUI()
