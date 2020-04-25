@@ -38,6 +38,8 @@ class GrabCut:
         self.weights = np.empty((2, n_components))
         self.means = np.empty((2, n_components, 3))
         self.covariances = np.empty((2, n_components, 3, 3))
+        self.det_cov = np.empty((2, n_components)).astype(np.float64)
+        self.inv_cov = np.empty_like(self.covariances)
         self.alpha = None
         self.components = np.empty((self.N, ), np.uint8)
 
@@ -52,22 +54,23 @@ class GrabCut:
             gmm = GaussianMixture(self.n_components)
             self.components[self.alpha == alpha] = gmm.fit_predict(pixels)
             self.weights[alpha] = gmm.weights_
-            self.covariances[alpha] = gmm.covariances_
-            self.means = gmm.means_
+            self.means[alpha] = gmm.means_
+            self.covariances[alpha] = cov = gmm.covariances_
+            for k in range(self.n_components):
+                self.det_cov[alpha, k] = np.linalg.det(cov[k])
+                self.inv_cov[alpha, k] = np.linalg.inv(cov[k])
 
-    def calculate_GMM_model(self):
-        for alpha in range(0, 2):
-            for k in range(0, self.n_components):
-                pixels = self.img[self.alpha == alpha and self.components == k]
-
-    def calculate_D(self, x, y):
-        pass
+    def calculate_D(self, alpha, k, z):
+        return (np.log(self.weights[alpha, k]) + 1/2*np.log(self.det_cov[alpha, k])
+                + 1/2*np.transpose(z - self.means[alpha, k]) @ self.inv_cov[alpha, k] @ (z - self.means[alpha, k]))
     '''
     Assign a foreground and background GMM cluster to every pixel in the unknown set 
     based off the minimum distance to the respective clusters
     '''
     def assign_GMM(self):
-        pass
+        iter = [self.calculate_D(self.alpha[i], k, self.img[i]) for i in range(self.N) for k in range(self.n_components)]
+        D = (np.fromiter(iter, dtype=np.float64)).reshape(self.N, self.n_components)
+        self.components = np.apply_along_axis(np.argmin, 1, D)
 
     '''
     Learn GMM parameters based off the pixel data with the newly assigned foreground and
@@ -75,12 +78,21 @@ class GrabCut:
     assigned foreground and background clusters from every pixel.
     '''
     def learn_GMM(self):
-        pass
+        for alpha in range(2):
+            total = np.count_nonzero(self.alpha == alpha)
+            for k in range(0, self.n_components):
+                indexes = np.where(np.logical_and(self.alpha == alpha, self.components == k))
+                pixels = self.img[indexes]
+                self.means[alpha, k] = np.mean(pixels)
+                self.covariances[alpha, k] = cov = np.cov(pixels.T)
+                self.inv_cov[alpha, k] = np.linalg.inv(cov)
+                self.det_cov[alpha, k] = np.linalg.det(cov)
+                self.weights[alpha, k] = len(pixels) / total
 
     '''
     A graph is constructed and Min Cut runs to estimate new foreground and background pixels
     '''
-    def graphcut(self):
+    def min_cut(self):
         pass
 
     def run(self, rect, init_mask):
@@ -103,6 +115,11 @@ class GrabCut:
         else:
             if rect is not None:
                 self.init_with_rect(rect)
+                for _ in range(self.iterCount):
+                    self.assign_GMM()
+                    self.learn_GMM()
+                    self.min_cut()
+
 
 if __name__ == '__main__':
     grabcut = GrabCut('../test_imgs/HarryPotter5.jpg')
