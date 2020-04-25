@@ -62,7 +62,7 @@ class ImageViewer(QGraphicsScene):
             self.rect = self.addRect(QRectF(pos, pos), self.getPen())
             return
         if self.mask is None:
-            self.mask = np.zeros(self.image.shape[:2], np.uint8)
+            self.mask = np.full(self.image.shape[:2], Trimap.U, np.uint8)
         if self.mode == EditMode.ADD_F_SEED:
             self.setMask(pos, pos, Trimap.F)
         elif self.mode == EditMode.ADD_B_SEED:

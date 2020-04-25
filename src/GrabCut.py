@@ -5,12 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import sklearn
+from sklearn.mixture import GaussianMixture
 import cv2 as cv
 
 class Trimap(IntEnum):
-    U = 0
-    B = 1
-    F = 2
+    B = 0
+    F = 1
+    U = 2
 
 class GrabCut:
     '''
@@ -22,16 +23,45 @@ class GrabCut:
     The unknown pixels is the foreground set.
     - Create foreground and background GMMs based off the sets previously defined.
     '''
-    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=True):
+    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=False):
         self.imagePath = imagePath
+        self.img = cv.imread(imagePath)
+        self.imgShape = self.img.shape[:2]
+        self.N = self.imgShape[0] * self.imgShape[1]
+        self.img = self.img.reshape(self.N, 3)
         self.n_components = n_components
         self.iterCount = iterCount
         self.useCV = useCV
-        self.mask = None
-        self.img = None
+        self.mask = np.zeros(self.imgShape, np.uint8)
         self.bgdModel = np.zeros((1, 65), np.float64)
         self.fgdModel = np.zeros((1, 65), np.float64)
+        self.weights = np.empty((2, n_components))
+        self.means = np.empty((2, n_components, 3))
+        self.covariances = np.empty((2, n_components, 3, 3))
+        self.alpha = None
+        self.components = np.empty((self.N, ), np.uint8)
 
+    def init_with_rect(self, rect):
+        self.mask[:, :] = Trimap.B
+        x1, y1, x2, y2 = rect
+        self.mask[y1:y2, x1:x2] = Trimap.F
+        self.mask = self.mask.reshape((self.N, ))
+        self.alpha = np.where(self.mask == Trimap.B, Trimap.B, Trimap.F)
+        for alpha in range(2):
+            pixels = self.img[self.alpha == alpha]
+            gmm = GaussianMixture(self.n_components)
+            self.components[self.alpha == alpha] = gmm.fit_predict(pixels)
+            self.weights[alpha] = gmm.weights_
+            self.covariances[alpha] = gmm.covariances_
+            self.means = gmm.means_
+
+    def calculate_GMM_model(self):
+        for alpha in range(0, 2):
+            for k in range(0, self.n_components):
+                pixels = self.img[self.alpha == alpha and self.components == k]
+
+    def calculate_D(self, x, y):
+        pass
     '''
     Assign a foreground and background GMM cluster to every pixel in the unknown set 
     based off the minimum distance to the respective clusters
@@ -55,9 +85,6 @@ class GrabCut:
 
     def run(self, rect, init_mask):
         if self.useCV:
-            if self.img is None:
-                self.img = cv.imread(self.imagePath)
-                self.mask = np.zeros(self.img.shape[:2], np.uint8)
             mode = 0
             if init_mask is not None:
                 mode = cv.GC_INIT_WITH_MASK
@@ -73,5 +100,12 @@ class GrabCut:
             resultPath = os.path.join(dirname, filename) + "_result" + fileext
             cv.imwrite(resultPath, img)
             return resultPath
+        else:
+            if rect is not None:
+                self.init_with_rect(rect)
 
+if __name__ == '__main__':
+    grabcut = GrabCut('../test_imgs/HarryPotter5.jpg')
+    rect = (10, 10, 450, 600)
+    grabcut.run(rect, None)
 
