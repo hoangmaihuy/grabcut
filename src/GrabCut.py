@@ -39,12 +39,11 @@ class GrabCut(object):
     - Create foreground and background GMMs based off the sets previously defined.
     '''
     @timeit
-    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=False):
+    def __init__(self, imagePath, n_components=5, iterCount=1, useCV=False):
         self.imagePath = imagePath
         self.img = cv.imread(imagePath)
         self.imgShape = self.img.shape[:2]
-        self.w = self.imgShape[0]   # image width
-        self.h = self.imgShape[1]   # image height
+        self.h, self.w = self.imgShape
         self.N = self.imgShape[0] * self.imgShape[1]
         self.pixels = self.img.reshape(self.N, 3)    # 1D image
         self.n_components = n_components
@@ -136,6 +135,7 @@ class GrabCut(object):
             result = self.img*mask2[:, :, np.newaxis]
         else:
             if rect is not None:
+                print(rect)
                 self.init_with_rect(rect)
                 for _ in range(self.iterCount):
                     self.assign_GMM()
@@ -146,7 +146,7 @@ class GrabCut(object):
 
 
 if __name__ == '__main__':
-    grabcut = GrabCut('../test_imgs/lena_small.jpg')
-    rect = (10, 10, 250, 250)
+    grabcut = GrabCut('../test_imgs/harry_small.jpg')
+    rect = (7, 9, 92, 99)
     grabcut.run(rect, None)
 

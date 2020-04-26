@@ -18,7 +18,7 @@ class GCGraph(object):
 		self.img = img
 		self.gamma = gamma
 		self.beta = 0
-		self.w, self.h = img.shape[:2]
+		self.h, self.w = img.shape[:2]
 		self.N = self.w * self.h
 		self.pixels = self.img.reshape(self.N, 3)
 		self.bgd_src = self.N
@@ -35,13 +35,14 @@ class GCGraph(object):
 
 	def calculate_beta(self):
 		w, h, img = self.w, self.h, self.img
+		print(h, w, img.shape)
 		dist, num = 0., 0
 		for y1 in range(h):
 			for x1 in range(w):
 				for k in range(4):
 					x2, y2 = x1 + self.dx[k], y1 + self.dy[k]
 					if 0 <= x2 < w and 0 <= y2 < h:
-						dist += euclidean(img[y1, x1], img[y1, x2])**2
+						dist += euclidean(img[y1, x1], img[y2, x2])**2
 						num += 1
 		self.beta = 0.5/(dist/num)
 
@@ -71,7 +72,8 @@ class GCGraph(object):
 				bgd_w, fgd_w = 0, self.largest_weight
 			else:
 				bgd_w, fgd_w = bgdModel.model_likelihood(self.pixels[i]), fgdModel.model_likelihood(self.pixels[i])
-			# print("t-links: ", i, bgd_w, fgd_w)
+			if bgd_w < fgd_w:
+				print("t-links: ", i, bgd_w, fgd_w)
 			self.graph.add_tedge(i, bgd_w, fgd_w)
 
 	def cut(self):
@@ -80,6 +82,6 @@ class GCGraph(object):
 
 
 if __name__ == '__main__':
-	img = cv.imread('../test_imgs/lena_small.jpg')
+	img = cv.imread('../test_imgs/HarryPotter5.jpg')
 	graph = GCGraph(img)
 

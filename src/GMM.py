@@ -1,6 +1,9 @@
 from sklearn.mixture import GaussianMixture
 import numpy as np
 
+EPS = 1e-6
+SINGULAR_FIX = 0.01
+
 
 class GaussianMixtureModel(object):
 	def __init__(self, K):
@@ -30,7 +33,7 @@ class GaussianMixtureModel(object):
 
 	# Define how a pixel fit into this model by summing component_likelihood
 	def model_likelihood(self, pixel):
-		return -np.log(np.sum([self.component_likelihood(pixel, k) * self.weight[k] for k in range(self.K)]))
+		return -np.log(sum([self.component_likelihood(pixel, k) * self.weight[k] for k in range(self.K)]))
 
 	# Assign to the most likelihood component
 	def get_component(self, pixel):
@@ -46,8 +49,11 @@ class GaussianMixtureModel(object):
 			if len(sub_pixels) == 0:
 				self.weight[k] = 0.
 				continue
-			self.mean[k] = np.mean(sub_pixels)
-			self.cov[k] = cov = np.cov(sub_pixels.T)
-			self.det_cov[k] = np.linalg.det(cov)
-			self.inv_cov[k] = np.linalg.inv(cov)
+			self.mean[k] = np.mean(sub_pixels, axis=0)
+			self.cov[k] = np.cov(sub_pixels.T, bias=True)
+			self.det_cov[k] = np.linalg.det(self.cov[k])
+			while self.det_cov[k] < EPS:
+				self.cov[k] += np.diag([SINGULAR_FIX for i in range(3)])
+				self.det_cov[k] = np.linalg.det(self.cov[k])
+			self.inv_cov[k] = np.linalg.inv(self.cov[k])
 			self.weight[k] = len(sub_pixels) / len(pixels)
