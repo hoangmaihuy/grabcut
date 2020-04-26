@@ -8,15 +8,18 @@ from PyQt5.QtCore import QRectF, QLineF, QPointF
 from src.GrabCut import GrabCut, Trimap
 from src.GrabCutQtDesignerUI import Ui_MainWindow
 
+
 class EditMode(IntEnum):
     DEFAULT = 0
     SET_B_REGION = 1
     ADD_B_SEED = 2
     ADD_F_SEED = 3
 
+
 class Color:
     RED = QColor(255, 0, 0)
     BLUE = QColor(0, 0, 255)
+
 
 class ImageViewer(QGraphicsScene):
     def __init__(self):
@@ -62,11 +65,11 @@ class ImageViewer(QGraphicsScene):
             self.rect = self.addRect(QRectF(pos, pos), self.getPen())
             return
         if self.mask is None:
-            self.mask = np.full(self.image.shape[:2], Trimap.U, np.uint8)
+            self.mask = np.full(self.image.shape[:2], Trimap.UKN, np.uint8)
         if self.mode == EditMode.ADD_F_SEED:
-            self.setMask(pos, pos, Trimap.F)
+            self.setMask(pos, pos, Trimap.FGD)
         elif self.mode == EditMode.ADD_B_SEED:
-            self.setMask(pos, pos, Trimap.B)
+            self.setMask(pos, pos, Trimap.BGD)
         self.addPath(QPainterPath(pos), self.getPen())
 
     def mouseMoveEvent(self, event):
@@ -80,7 +83,7 @@ class ImageViewer(QGraphicsScene):
         fromPos = pos - QPointF(self.BRUSH_RADIUS, self.BRUSH_RADIUS)
         toPos = pos + QPointF(self.BRUSH_RADIUS, self.BRUSH_RADIUS)
 
-        value = Trimap.F if self.mode == EditMode.ADD_F_SEED else Trimap.B
+        value = Trimap.FGD if self.mode == EditMode.ADD_F_SEED else Trimap.BGD
         color = Color.BLUE if self.mode == EditMode.ADD_F_SEED else Color.RED
         self.setMask(fromPos, toPos, value)
         self.addEllipse(QRectF(fromPos, toPos), self.getPen(), QBrush(color))

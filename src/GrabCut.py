@@ -1,19 +1,37 @@
 import os
+import time
 from enum import IntEnum
 
-import matplotlib.pyplot as plt
 import numpy as np
-import scipy
-import sklearn
-from sklearn.mixture import GaussianMixture
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import maximum_flow
+from scipy.spatial.distance import euclidean
+from src.GMM import GaussianMixtureModel
 import cv2 as cv
 
-class Trimap(IntEnum):
-    B = 0
-    F = 1
-    U = 2
 
-class GrabCut:
+class Trimap(IntEnum):
+    BGD = 0
+    FGD = 1
+    UKN = 2
+
+
+class Matte(IntEnum):
+    BGD = 0
+    FGD = 1
+
+
+def timeit(func):
+    def wrapper(*args, **kw):
+        time1 = time.time()
+        result = func(*args, **kw)
+        time2 = time.time()
+        print(func.__name__, time2-time1)
+        return result
+    return wrapper
+
+
+class GrabCut(object):
     '''
     - The user initializes the trimap by only giving the background pixels. 
     The foreground set of pixels is set to the empty set. 
@@ -27,71 +45,67 @@ class GrabCut:
         self.imagePath = imagePath
         self.img = cv.imread(imagePath)
         self.imgShape = self.img.shape[:2]
+        self.w = self.imgShape[0]   # image width
+        self.h = self.imgShape[1]   # image height
         self.N = self.imgShape[0] * self.imgShape[1]
-        self.img = self.img.reshape(self.N, 3)
+        self.pixels = self.img.reshape(self.N, 3)    # 1D image
         self.n_components = n_components
         self.iterCount = iterCount
         self.useCV = useCV
         self.mask = np.zeros(self.imgShape, np.uint8)
-        self.bgdModel = np.zeros((1, 65), np.float64)
-        self.fgdModel = np.zeros((1, 65), np.float64)
-        self.weights = np.empty((2, n_components))
-        self.means = np.empty((2, n_components, 3))
-        self.covariances = np.empty((2, n_components, 3, 3))
-        self.det_cov = np.empty((2, n_components)).astype(np.float64)
-        self.inv_cov = np.empty_like(self.covariances)
+        self.bgdModel = None
+        self.fgdModel = None
+        # Matte segmentation value,
         self.alpha = None
+        # GMM components index
         self.components = np.empty((self.N, ), np.uint8)
+        self.trimap_bgd = None
+        self.trimap_fgd = None
+        self.trimap_ukn = None
+        self.matte_bgd = None
+        self.matte_fgd = None
 
+    @timeit
     def init_with_rect(self, rect):
-        self.mask[:, :] = Trimap.B
+        self.mask[:, :] = Trimap.BGD
         x1, y1, x2, y2 = rect
-        self.mask[y1:y2, x1:x2] = Trimap.F
+        self.mask[y1:y2, x1:x2] = Trimap.UGD
         self.mask = self.mask.reshape((self.N, ))
-        self.alpha = np.where(self.mask == Trimap.B, Trimap.B, Trimap.F)
-        for alpha in range(2):
-            pixels = self.img[self.alpha == alpha]
-            gmm = GaussianMixture(self.n_components)
-            self.components[self.alpha == alpha] = gmm.fit_predict(pixels)
-            self.weights[alpha] = gmm.weights_
-            self.means[alpha] = gmm.means_
-            self.covariances[alpha] = cov = gmm.covariances_
-            for k in range(self.n_components):
-                self.det_cov[alpha, k] = np.linalg.det(cov[k])
-                self.inv_cov[alpha, k] = np.linalg.inv(cov[k])
+        self.alpha = np.where(self.mask == Trimap.BGD, Matte.BGD, Matte.FGD)
+        self.trimap_bgd = np.where(self.mask == Trimap.B)
+        self.trimap_fgd = np.where(self.mask == Trimap.F)
+        self.trimap_ukn = np.where(self.mask == Trimap.U)
+        self.matte_bgd = np.where(self.alpha == Matte.BGD)
+        self.matte_fgd = np.where(self.alpha == Matte.FGD)
+        self.bgdModel = GaussianMixtureModel(self.n_components)
+        self.fgdModel = GaussianMixtureModel(self.n_components)
+        self.components[self.matte_bgd] = self.bgdModel.init_components(self.pixels[self.matte_bgd])
+        self.components[self.matte_fgd] = self.fgdModel.init_components(self.pixels[self.matte_fgd])
 
-    def calculate_D(self, alpha, k, z):
-        return (np.log(self.weights[alpha, k]) + 1/2*np.log(self.det_cov[alpha, k])
-                + 1/2*np.transpose(z - self.means[alpha, k]) @ self.inv_cov[alpha, k] @ (z - self.means[alpha, k]))
     '''
     Assign a foreground and background GMM cluster to every pixel in the unknown set 
     based off the minimum distance to the respective clusters
     '''
+    @timeit
     def assign_GMM(self):
-        iter = [self.calculate_D(self.alpha[i], k, self.img[i]) for i in range(self.N) for k in range(self.n_components)]
-        D = (np.fromiter(iter, dtype=np.float64)).reshape(self.N, self.n_components)
-        self.components = np.apply_along_axis(np.argmin, 1, D)
+        self.components[self.matte_bgd] = self.bgdModel.get_components(self.pixels[self.matte_bgd])
+        self.components[self.matte_fgd] = self.fgdModel.get_components(self.pixels[self.matte_fgd])
 
     '''
     Learn GMM parameters based off the pixel data with the newly assigned foreground and
     background clusters. This step will get rid of the old GMM and create a new GMM with the
     assigned foreground and background clusters from every pixel.
     '''
+    @timeit
     def learn_GMM(self):
-        for alpha in range(2):
-            total = np.count_nonzero(self.alpha == alpha)
-            for k in range(0, self.n_components):
-                indexes = np.where(np.logical_and(self.alpha == alpha, self.components == k))
-                pixels = self.img[indexes]
-                self.means[alpha, k] = np.mean(pixels)
-                self.covariances[alpha, k] = cov = np.cov(pixels.T)
-                self.inv_cov[alpha, k] = np.linalg.inv(cov)
-                self.det_cov[alpha, k] = np.linalg.det(cov)
-                self.weights[alpha, k] = len(pixels) / total
+        self.bgdModel.learn(self.pixels[self.matte_bgd], self.components[self.matte_bgd])
+        self.fgdModel.learn(self.pixels[self.matte_fgd], self.components[self.matte_fgd])
 
-    '''
-    A graph is constructed and Min Cut runs to estimate new foreground and background pixels
-    '''
+    @timeit
+    def build_graph(self):
+        pass
+
+    @timeit
     def min_cut(self):
         pass
 
@@ -104,6 +118,8 @@ class GrabCut:
                 self.mask[init_mask == Trimap.F] = cv.GC_FGD
             if rect is not None:
                 mode = cv.GC_INIT_WITH_RECT
+                self.bgdModel = np.zeros((1, 65), np.float64)
+                self.fgdModel = np.zeros((1, 65), np.float64)
             cv.grabCut(self.img, self.mask, rect, self.bgdModel, self.fgdModel, self.iterCount, mode)
             mask2 = np.where((self.mask == 2) | (self.mask == 0), 0, 1).astype('uint8')
             img = self.img*mask2[:, :, np.newaxis]
@@ -122,7 +138,7 @@ class GrabCut:
 
 
 if __name__ == '__main__':
-    grabcut = GrabCut('../test_imgs/HarryPotter5.jpg')
-    rect = (10, 10, 450, 600)
+    grabcut = GrabCut('../test_imgs/lena.jpg')
+    rect = (10, 10, 250, 250)
     grabcut.run(rect, None)
 
