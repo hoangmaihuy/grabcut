@@ -104,8 +104,9 @@ class GrabCut(object):
     @timeit
     def graph_cut(self):
         self.graph.build_graph(self.mask, self.bgdModel, self.fgdModel)
-        min_cut = self.graph.min_cut()
-        print(min_cut)
+        self.alpha = self.graph.cut()
+        self.matte_bgd = np.where(self.alpha == Matte.BGD)
+        self.matte_fgd = np.where(self.alpha == Matte.FGD)
 
     def run(self, rect, init_mask):
         if self.useCV:
