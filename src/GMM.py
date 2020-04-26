@@ -18,9 +18,9 @@ class GaussianMixtureModel(object):
 		self.weight = gmm.weights_
 		self.mean = gmm.means_
 		self.cov = gmm.covariances_
-		for cov in self.cov:
-			self.det_cov = np.linalg.det(cov)
-			self.inv_cov = np.linalg.inv(cov)
+		for k in range(self.K):
+			self.det_cov[k] = np.linalg.det(self.cov[k])
+			self.inv_cov[k] = np.linalg.inv(self.cov[k])
 		return components
 
 	# Define how a pixel fit into a component k of this model

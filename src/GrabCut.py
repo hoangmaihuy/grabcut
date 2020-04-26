@@ -1,13 +1,10 @@
 import os
 import time
-from enum import IntEnum
-
-import numpy as np
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import maximum_flow
-from scipy.spatial.distance import euclidean
-from src.GMM import GaussianMixtureModel
 import cv2 as cv
+import numpy as np
+from enum import IntEnum
+from src.GMM import GaussianMixtureModel
+from src.GCGraph import GCGraph
 
 
 class Trimap(IntEnum):
@@ -41,6 +38,7 @@ class GrabCut(object):
     The unknown pixels is the foreground set.
     - Create foreground and background GMMs based off the sets previously defined.
     '''
+    @timeit
     def __init__(self, imagePath, n_components=5, iterCount=5, useCV=False):
         self.imagePath = imagePath
         self.img = cv.imread(imagePath)
@@ -52,6 +50,7 @@ class GrabCut(object):
         self.n_components = n_components
         self.iterCount = iterCount
         self.useCV = useCV
+        # User-input trimap
         self.mask = np.zeros(self.imgShape, np.uint8)
         self.bgdModel = None
         self.fgdModel = None
@@ -64,17 +63,18 @@ class GrabCut(object):
         self.trimap_ukn = None
         self.matte_bgd = None
         self.matte_fgd = None
+        self.graph = GCGraph(self.img)
 
     @timeit
     def init_with_rect(self, rect):
         self.mask[:, :] = Trimap.BGD
         x1, y1, x2, y2 = rect
-        self.mask[y1:y2, x1:x2] = Trimap.UGD
+        self.mask[y1:y2, x1:x2] = Trimap.UKN
         self.mask = self.mask.reshape((self.N, ))
         self.alpha = np.where(self.mask == Trimap.BGD, Matte.BGD, Matte.FGD)
-        self.trimap_bgd = np.where(self.mask == Trimap.B)
-        self.trimap_fgd = np.where(self.mask == Trimap.F)
-        self.trimap_ukn = np.where(self.mask == Trimap.U)
+        self.trimap_bgd = np.where(self.mask == Trimap.BGD)
+        self.trimap_fgd = np.where(self.mask == Trimap.FGD)
+        self.trimap_ukn = np.where(self.mask == Trimap.UKN)
         self.matte_bgd = np.where(self.alpha == Matte.BGD)
         self.matte_fgd = np.where(self.alpha == Matte.FGD)
         self.bgdModel = GaussianMixtureModel(self.n_components)
@@ -102,12 +102,10 @@ class GrabCut(object):
         self.fgdModel.learn(self.pixels[self.matte_fgd], self.components[self.matte_fgd])
 
     @timeit
-    def build_graph(self):
-        pass
-
-    @timeit
-    def min_cut(self):
-        pass
+    def graph_cut(self):
+        self.graph.build_graph(self.mask, self.bgdModel, self.fgdModel)
+        min_cut = self.graph.min_cut()
+        print(min_cut)
 
     def run(self, rect, init_mask):
         if self.useCV:
@@ -134,11 +132,11 @@ class GrabCut(object):
                 for _ in range(self.iterCount):
                     self.assign_GMM()
                     self.learn_GMM()
-                    self.min_cut()
+                    self.graph_cut()
 
 
 if __name__ == '__main__':
-    grabcut = GrabCut('../test_imgs/lena.jpg')
+    grabcut = GrabCut('../test_imgs/lena_small.jpg')
     rect = (10, 10, 250, 250)
     grabcut.run(rect, None)
 
