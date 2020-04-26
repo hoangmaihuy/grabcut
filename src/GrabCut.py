@@ -88,8 +88,10 @@ class GrabCut(object):
     '''
     @timeit
     def assign_GMM(self):
-        self.components[self.matte_bgd] = self.bgdModel.get_components(self.pixels[self.matte_bgd])
-        self.components[self.matte_fgd] = self.fgdModel.get_components(self.pixels[self.matte_fgd])
+        matte_bgd = np.where(np.logical_and(self.alpha == Matte.BGD, self.mask == Trimap.UKN))
+        matte_fgd = np.where(np.logical_and(self.alpha == Matte.FGD, self.mask == Trimap.UKN))
+        self.components[matte_bgd] = self.bgdModel.get_components(self.pixels[matte_bgd])
+        self.components[matte_fgd] = self.fgdModel.get_components(self.pixels[matte_fgd])
 
     '''
     Learn GMM parameters based off the pixel data with the newly assigned foreground and
@@ -104,11 +106,21 @@ class GrabCut(object):
     @timeit
     def graph_cut(self):
         self.graph.build_graph(self.mask, self.bgdModel, self.fgdModel)
+        print("before, bgd:", len(self.matte_bgd[0]), "fgd:", len(self.matte_fgd[0]))
         self.alpha = self.graph.cut()
         self.matte_bgd = np.where(self.alpha == Matte.BGD)
         self.matte_fgd = np.where(self.alpha == Matte.FGD)
+        print("after, bgd:", len(self.matte_bgd[0]), "fgd:", len(self.matte_fgd[0]))
+
+    def write_result(self, img):
+        dirname, filename = os.path.split(self.imagePath)
+        filename, fileext = os.path.splitext(filename)
+        resultPath = os.path.join(dirname, filename) + "_result" + fileext
+        cv.imwrite(resultPath, img)
+        return resultPath
 
     def run(self, rect, init_mask):
+        result = None
         if self.useCV:
             mode = 0
             if init_mask is not None:
@@ -121,12 +133,7 @@ class GrabCut(object):
                 self.fgdModel = np.zeros((1, 65), np.float64)
             cv.grabCut(self.img, self.mask, rect, self.bgdModel, self.fgdModel, self.iterCount, mode)
             mask2 = np.where((self.mask == 2) | (self.mask == 0), 0, 1).astype('uint8')
-            img = self.img*mask2[:, :, np.newaxis]
-            dirname, filename = os.path.split(self.imagePath)
-            filename, fileext = os.path.splitext(filename)
-            resultPath = os.path.join(dirname, filename) + "_result" + fileext
-            cv.imwrite(resultPath, img)
-            return resultPath
+            result = self.img*mask2[:, :, np.newaxis]
         else:
             if rect is not None:
                 self.init_with_rect(rect)
@@ -134,6 +141,8 @@ class GrabCut(object):
                     self.assign_GMM()
                     self.learn_GMM()
                     self.graph_cut()
+                result = self.img * self.alpha.reshape(self.imgShape)[:, :, np.newaxis]
+        return self.write_result(result)
 
 
 if __name__ == '__main__':

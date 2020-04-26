@@ -35,14 +35,15 @@ class GCGraph(object):
 
 	def calculate_beta(self):
 		w, h, img = self.w, self.h, self.img
-		dist = np.array([])
+		dist, num = 0., 0
 		for y1 in range(h):
 			for x1 in range(w):
 				for k in range(4):
 					x2, y2 = x1 + self.dx[k], y1 + self.dy[k]
 					if 0 <= x2 < w and 0 <= y2 < h:
-						np.append(dist, euclidean(img[y1, x1], img[y1, x2])**2)
-		self.beta = 1/(2*np.mean(dist))
+						dist += euclidean(img[y1, x1], img[y1, x2])**2
+						num += 1
+		self.beta = 0.5/(dist/num)
 
 	def init_N_links(self):
 		w, h, img = self.w, self.h, self.img
@@ -53,9 +54,10 @@ class GCGraph(object):
 					x2, y2 = x1 + self.dx[k], y1 + self.dy[k]
 					if 0 <= x2 < w and 0 <= y2 < h:
 						t = self.to_1D_coord(x2, y2)
-						weight = self.gamma / euclidean((x1, y1), (x2, y2)) * np.exp(-self.beta * euclidean(img[y1, x1], img[y2, x2]))
+						weight = self.gamma / euclidean((x1, y1), (x2, y2)) * np.exp(-self.beta * (euclidean(img[y1, x1], img[y2, x2])**2))
 						self.largest_weight = max(self.largest_weight, weight)
 						self.graph.add_edge(s, t, weight, weight)
+						# print("n-links: ", s, t, weight)
 
 	def build_graph(self, mask, bgdModel, fgdModel):
 		self.graph = maxflow.Graph[float](self.N, self.edge_nums)
@@ -69,6 +71,7 @@ class GCGraph(object):
 				bgd_w, fgd_w = 0, self.largest_weight
 			else:
 				bgd_w, fgd_w = bgdModel.model_likelihood(self.pixels[i]), fgdModel.model_likelihood(self.pixels[i])
+			# print("t-links: ", i, bgd_w, fgd_w)
 			self.graph.add_tedge(i, bgd_w, fgd_w)
 
 	def cut(self):
