@@ -6,6 +6,12 @@ from enum import IntEnum
 from src.GMM import GaussianMixtureModel
 from src.GCGraph import GCGraph
 
+class Color:
+    Black = [0, 0, 0]
+    White = [255, 255, 255]
+    Blue = [0, 0, 255]
+    Red = [255, 0, 0]
+    Green = [0, 255, 0]
 
 class Trimap(IntEnum):
     BGD = 0
@@ -39,7 +45,7 @@ class GrabCut(object):
     - Create foreground and background GMMs based off the sets previously defined.
     '''
     @timeit
-    def __init__(self, imagePath, n_components=5, iterCount=1, useCV=False):
+    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=False):
         self.imagePath = imagePath
         self.img = cv.imread(imagePath)
         self.imgShape = self.img.shape[:2]
@@ -105,11 +111,10 @@ class GrabCut(object):
     @timeit
     def graph_cut(self):
         self.graph.build_graph(self.mask, self.bgdModel, self.fgdModel)
-        print("before, bgd:", len(self.matte_bgd[0]), "fgd:", len(self.matte_fgd[0]))
         self.alpha = self.graph.cut()
         self.matte_bgd = np.where(self.alpha == Matte.BGD)
         self.matte_fgd = np.where(self.alpha == Matte.FGD)
-        print("after, bgd:", len(self.matte_bgd[0]), "fgd:", len(self.matte_fgd[0]))
+        print("bgd:", len(self.matte_bgd[0]), "fgd:", len(self.matte_fgd[0]))
 
     def write_result(self, img):
         dirname, filename = os.path.split(self.imagePath)
@@ -146,7 +151,7 @@ class GrabCut(object):
 
 
 if __name__ == '__main__':
-    grabcut = GrabCut('../test_imgs/harry_small.jpg')
-    rect = (7, 9, 92, 99)
+    grabcut = GrabCut('../test_imgs/lena_small.jpg')
+    rect = (10, 10, 168, 196)
     grabcut.run(rect, None)
 

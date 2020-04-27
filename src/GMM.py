@@ -28,12 +28,17 @@ class GaussianMixtureModel(object):
 
 	# Define how a pixel fit into a component k of this model
 	def component_likelihood(self, pixel, k):
+		if self.weight[k] < EPS:
+			return 0
 		x = pixel - self.mean[k]
 		return 1/np.sqrt(self.det_cov[k]) * np.exp(-0.5 * (x.T @ self.inv_cov[k] @ x))
 
 	# Define how a pixel fit into this model by summing component_likelihood
 	def model_likelihood(self, pixel):
-		return -np.log(sum([self.component_likelihood(pixel, k) * self.weight[k] for k in range(self.K)]))
+		s = np.sum([self.component_likelihood(pixel, k) * self.weight[k] for k in range(self.K)])
+		if s < EPS:
+			return 0
+		return -np.log(s)
 
 	# Assign to the most likelihood component
 	def get_component(self, pixel):
@@ -50,6 +55,7 @@ class GaussianMixtureModel(object):
 				self.weight[k] = 0.
 				continue
 			self.mean[k] = np.mean(sub_pixels, axis=0)
+			#print(sub_pixels, self.mean[k])
 			self.cov[k] = np.cov(sub_pixels.T, bias=True)
 			self.det_cov[k] = np.linalg.det(self.cov[k])
 			while self.det_cov[k] < EPS:
