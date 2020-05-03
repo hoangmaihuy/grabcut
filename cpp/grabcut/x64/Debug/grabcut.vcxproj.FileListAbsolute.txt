@@ -1,2 +1,0 @@
-C:\Users\pynhp\Git\grabcut\cpp\grabcut\x64\Debug\grabcut.exe
-C:\Users\pynhp\Git\grabcut\cpp\grabcut\x64\Debug\grabcut.pdb

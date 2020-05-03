@@ -56,7 +56,7 @@ class GaussianMixtureModel(object):
 				continue
 			self.mean[k] = np.mean(sub_pixels, axis=0)
 			#print(sub_pixels, self.mean[k])
-			self.cov[k] = np.cov(sub_pixels.T, bias=True)
+			self.cov[k] = np.cov(sub_pixels.T)
 			self.det_cov[k] = np.linalg.det(self.cov[k])
 			while self.det_cov[k] < EPS:
 				self.cov[k] += np.diag([SINGULAR_FIX for i in range(3)])
