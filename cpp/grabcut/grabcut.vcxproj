@@ -129,9 +129,16 @@
   <ItemGroup>
     <ClCompile Include="GMM.cpp" />
     <ClCompile Include="grabcut.cpp" />
+    <ClCompile Include="graph.cpp" />
+    <ClCompile Include="maxflow.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="block.h" />
     <ClInclude Include="GMM.h" />
+    <ClInclude Include="graph.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="instances.inc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -61,7 +61,7 @@ void calcEigen(double (&cov)[3][3], double &eival, double (&eivec)[3])
 	REP(i, 3) eivec[i] = V.at<double>(0, i);
 }
 
-VecIndex GMM::init_components(const vector<Vec3d> &pixels)
+VecIndex GMM::init_components(const vector<Vec3d>& pixels)
 {
 	double eivals[K];
 	double eivecs[K][3];

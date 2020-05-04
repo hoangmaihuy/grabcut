@@ -2,6 +2,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <iostream>
+#include "GMM.h"
+#include "graph.h"
 
 using namespace cv;
 using namespace std;
@@ -12,6 +14,9 @@ using namespace std;
 #else
 #  define D(x) do{}while(0)
 #endif
+
+#define REP(i, n) for (int i = 0; i < n; i++)
+#define For(i, a, b) for (int i = a; i <= b; i++)
 
 enum EditMode {
     DEFAULT,
@@ -26,7 +31,7 @@ const Scalar GREEN = Scalar(0, 255, 0);
 
 class GrabCut
 {
-    enum { BGD, FGD, UKN };
+    enum Matte { BGD, FGD };
 public:
     static const int radius = 2;
     static const int thickness = -1;
@@ -34,19 +39,22 @@ public:
     Rect rect;
     EditMode mode;
     bool isRectInit, inProgress;
-    Mat mask;
+    int iter;
+    Matte** mask;
     Mat img;
+    vector<Vec3d> bgdPixs, fgdPixs;
+    vector<pair<int, int>> bgdPos, fgdPos;
+    VecIndex bgdComp, fgdComp;
     vector<Point> fgdSeeds, bgdSeeds;
+    GMM bgdModel, fgdModel;
+
     GrabCut(const Mat &img, int nCluster, int iterCount) : nCluster(nCluster), iterCount(iterCount)
     {
         mode = DEFAULT;
         width = img.cols;
         height = img.rows;
         img.copyTo(this->img);
-        isRectInit = false;
-        fgdSeeds.clear();
-        bgdSeeds.clear();
-        inProgress = false;
+        clear();
     }
 
     void showInput()
@@ -80,13 +88,72 @@ public:
     void clear()
     {
         isRectInit = false;
-        fgdSeeds.clear();
-        bgdSeeds.clear();
+        fgdSeeds.clear(); bgdSeeds.clear();
+        fgdPixs.clear(); bgdPixs.clear();
+        fgdPos.clear(); bgdPos.clear();
+        bgdComp.clear(); fgdComp.clear();
         inProgress = false;
-        showInput();
+        iter = 0;
+    }
+
+    void initIter()
+    {
+        calcBeta();
+        int x1 = min(rect.x, 0), y1 = min(rect.y, 0);
+        int x2 = min(x1 + rect.width, width), y2 = min(y1 + rect.height, height);
+        mask = new Matte * [height];
+        REP(y, height)
+        {
+            mask[y] = new Matte[width];
+            REP(x, width)
+            {
+                if (x1 <= x && x <= x2 && y1 <= y && y <= y2)
+                {
+                    mask[y][x] = FGD;
+                    fgdPixs.push_back(img.at<Vec3d>(y, x));
+                    fgdPos.push_back(make_pair(x, y));
+                }
+                else
+                {
+                    mask[y][x] = BGD;
+                    bgdPixs.push_back(img.at<Vec3d>(y, x));
+                    bgdPos.push_back(make_pair(x, y));
+                }
+            }
+        }
+        bgdComp = bgdModel.init_components(bgdPixs);
+        fgdComp = fgdModel.init_components(fgdPixs);
     }
 
     void nextIter() 
+    {
+        if (!iter) initIter();
+        assignGMM(bgdPixs, bgdComp, bgdModel);
+        assignGMM(fgdPixs, fgdComp, fgdModel);
+        bgdModel.learn(bgdPixs, bgdComp);
+        fgdModel.learn(fgdPixs, fgdComp);
+        buildGraph();
+        graphCut();
+        iter++;
+    }
+
+    void assignGMM(const vector<Vec3d>& pixels, VecIndex components, GMM &model)
+    {
+        REP(i, pixels.size())
+            components[i] = model.get_component(pixels[i]);
+    }
+
+    void calcBeta()
+    {
+
+    }
+
+    void buildGraph()
+    {
+
+    }
+
+    void graphCut()
     {
 
     }
@@ -206,6 +273,7 @@ int main(int argc, char* argv[])
         case 'c':
             D(cerr << "Clear input\n");
             gc->clear();
+            gc->showInput();
         }
     }
 }

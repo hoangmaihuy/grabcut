@@ -21,12 +21,11 @@ public:
 	vector<int> C[K], idx;
 	vector<Vec3d> pixs[K];
 	GMM() { }
-	void calcData(const vector<Vec3d>& pixels, int k);
 	VecIndex init_components(const vector<Vec3d>& pixels);
 	Index get_component(const Vec3d &pixel);
 	double component_likelihood(const Vec3d &pixel, int k);
 	double model_likelihood(const Vec3d &pixel);
-	void learn(const vector<Vec3d>& pixels, const VecIndex &components);
+	void learn(const vector<Vec3d>& pixels, const VecIndex& components);
 };
 
 
