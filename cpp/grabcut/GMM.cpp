@@ -1,4 +1,5 @@
 #include "GMM.h"
+#include <iostream>
 
 using namespace cv;
 using namespace std;
@@ -9,7 +10,7 @@ using namespace std;
 const double SINGULAR_FIX = 0.01;
 const double EPS = 1e-6;
 
-void calcMeanCov(const vector<Vec3d>& pixels, double (&mean)[3], double (&cov)[3][3])
+void calcMeanCov(const vector<Vec3b>& pixels, double (&mean)[3], double (&cov)[3][3])
 {
 	memset(mean, 0, sizeof(mean));
 	memset(cov, 0, sizeof(cov));
@@ -20,7 +21,7 @@ void calcMeanCov(const vector<Vec3d>& pixels, double (&mean)[3], double (&cov)[3
 	if (n <= 1) return;
 	for (auto pixel : pixels)
 	{
-		REP(i, 3) diff[i] = pixel[i] - mean[i];
+		REP(i, 3) diff[i] = (double)pixel[i] - mean[i];
 		REP(i, 3) REP(j, 3) cov[i][j] += diff[i] * diff[j];
 	}
 	REP(i, 3) REP(j, 3) cov[i][j] /= (n - 1);
@@ -61,13 +62,16 @@ void calcEigen(double (&cov)[3][3], double &eival, double (&eivec)[3])
 	REP(i, 3) eivec[i] = V.at<double>(0, i);
 }
 
-VecIndex GMM::init_components(const vector<Vec3d>& pixels)
+void GMM::init_components(const vector<Vec3b>& pixels, VecIndex &components)
 {
 	double eivals[K];
 	double eivecs[K][3];
 	// All pixels in C[0]
-	VecIndex components = VecIndex(pixels.size(), 0);
-	REP(i, pixels.size()) C[0].push_back(i);
+	REP(i, pixels.size())
+	{
+		C[0].push_back(i);
+		components[i] = 0;
+	}
 	calcMeanCov(pixels, mean[0], cov[0]);
 	calcEigen(cov[0], eivals[0], eivecs[0]);
 	for (int i = 1; i < K; i++)
@@ -99,10 +103,9 @@ VecIndex GMM::init_components(const vector<Vec3d>& pixels)
 		weight[i] = (double)C[i].size() / pixels.size();
 		calcDetInv(cov[i], det_cov[i], inv_cov[i]);
 	}
-	return components;
 }
 
-Index GMM::get_component(const Vec3d& pixel)
+Index GMM::get_component(const Vec3b& pixel)
 {
 	Index k = 0;
 	double val = component_likelihood(pixel, 0);
@@ -118,7 +121,7 @@ Index GMM::get_component(const Vec3d& pixel)
 	return k;
 }
 
-double GMM::component_likelihood(const Vec3d& pixel, int k)
+double GMM::component_likelihood(const Vec3b& pixel, int k)
 {
 	if (weight[k] < EPS) return 0;
 	double diff[3];
@@ -130,18 +133,17 @@ double GMM::component_likelihood(const Vec3d& pixel, int k)
 		REP(j, 3) tmp += diff[j] * inv_cov[k][j][i];
 		mult += tmp * diff[i];
 	}
-	return exp(-0.5 * mult) / det_cov[k];
+	return 1.0 / det_cov[k] * exp(-0.5 * mult) ;
 }
 
-double GMM::model_likelihood(const Vec3d& pixel)
+double GMM::model_likelihood(const Vec3b& pixel)
 {
 	double s = 0;
-	REP(i, K) s += component_likelihood(pixel, i);
-	if (s < EPS) return 0;
-	return -log(s);
+	REP(i, K) s += weight[i] * component_likelihood(pixel, i);
+	return s;
 }
 
-void GMM::learn(const vector<Vec3d>& pixels, const VecIndex& components)
+void GMM::learn(const vector<Vec3b>& pixels, const VecIndex& components)
 {
 	REP(i, K)
 	{
@@ -154,11 +156,15 @@ void GMM::learn(const vector<Vec3d>& pixels, const VecIndex& components)
 		C[k].push_back(i);
 		pixs[k].push_back(pixels[i]);
 	}
-	REP(i, n)
+	cerr << "model learning\n";
+	cerr << "pixs size = ["; REP(i, K) cerr << pixs[i].size() << " "; cerr << "]\n";
+	REP(i, K)
 	{
 		if (pixs[i].empty()) continue;
 		calcMeanCov(pixs[i], mean[i], cov[i]);
 		calcDetInv(cov[i], det_cov[i], inv_cov[i]);
 		weight[i] = (double)pixs[i].size() / n;
 	}
+	cerr << "weight = [";
+	REP(i, K) cerr << weight[i] << " "; cerr << "]\n";
 }

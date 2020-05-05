@@ -19,13 +19,13 @@ public:
 	double inv_cov[K][3][3];
 	// helper arrays
 	vector<int> C[K], idx;
-	vector<Vec3d> pixs[K];
+	vector<Vec3b> pixs[K];
 	GMM() { }
-	VecIndex init_components(const vector<Vec3d>& pixels);
-	Index get_component(const Vec3d &pixel);
-	double component_likelihood(const Vec3d &pixel, int k);
-	double model_likelihood(const Vec3d &pixel);
-	void learn(const vector<Vec3d>& pixels, const VecIndex& components);
+	void init_components(const vector<Vec3b>& pixels, VecIndex &components);
+	Index get_component(const Vec3b &pixel);
+	double component_likelihood(const Vec3b &pixel, int k);
+	double model_likelihood(const Vec3b &pixel);
+	void learn(const vector<Vec3b>& pixels, const VecIndex& components);
 };
 
 

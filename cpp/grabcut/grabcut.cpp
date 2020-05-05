@@ -8,6 +8,8 @@
 using namespace cv;
 using namespace std;
 
+typedef Graph<double, double, double> GraphType;
+
 #define DEBUG 1
 #ifdef DEBUG
 #  define D(x) (x)
@@ -31,18 +33,24 @@ const Scalar GREEN = Scalar(0, 255, 0);
 
 class GrabCut
 {
-    enum Matte { BGD, FGD };
+    enum Matte { BGD, FGD, PR_BGD, PR_FGD};
 public:
     static const int radius = 2;
     static const int thickness = -1;
-    int width, height, nCluster, iterCount;
+    const int dx[4] = { 1, -1, 0, 1 };
+    const int dy[4] = { 0, 1, 1, 1 };
+    const double dis[4] = { 1, 1.0/sqrt(2), 1, 1.0/sqrt(2) };
+    GraphType* g;
+    int width, height, nCluster, iterCount, edgeNum, nodeNum;
+    const double gamma = 50.0, maxEdge = 500.0;
+    double beta;
     Rect rect;
     EditMode mode;
-    bool isRectInit, inProgress;
+    bool isRectInit, inProgress, initMask;
     int iter;
     Matte** mask;
     Mat img;
-    vector<Vec3d> bgdPixs, fgdPixs;
+    vector<Vec3b> bgdPixs, fgdPixs;
     vector<pair<int, int>> bgdPos, fgdPos;
     VecIndex bgdComp, fgdComp;
     vector<Point> fgdSeeds, bgdSeeds;
@@ -53,8 +61,20 @@ public:
         mode = DEFAULT;
         width = img.cols;
         height = img.rows;
+        D(cerr << "(h, w) = " << height << " " << width << "\n");
         img.copyTo(this->img);
+        createMask();
         clear();
+    }
+
+    void createMask()
+    {
+        mask = new Matte* [height];
+        REP(y, height)
+        {
+            mask[y] = new Matte[width];
+        }
+        D(cerr << "mask created!\n");
     }
 
     void showInput()
@@ -74,6 +94,11 @@ public:
     {
         Mat res;
         this->img.copyTo(res);
+        REP(y, height) REP(x, width)
+        {
+            if (mask[y][x] == BGD || mask[y][x] == PR_BGD)
+                res.at<Vec3b>(y, x) = Vec3b(0, 0, 0);
+        }
         imshow("Output", res);
     }
 
@@ -82,16 +107,23 @@ public:
         this->mode = mode;
     }
 
-    void addBGDSeed(Point p) { bgdSeeds.push_back(p); }
-    void addFGDSeed(Point p) { fgdSeeds.push_back(p); }
+    void addBGDSeed(Point p) { bgdSeeds.push_back(p); mask[p.y][p.x] = BGD; }
+    void addFGDSeed(Point p) { fgdSeeds.push_back(p); mask[p.y][p.x] = FGD; }
 
-    void clear()
+    void clearPixs()
     {
-        isRectInit = false;
-        fgdSeeds.clear(); bgdSeeds.clear();
         fgdPixs.clear(); bgdPixs.clear();
         fgdPos.clear(); bgdPos.clear();
         bgdComp.clear(); fgdComp.clear();
+    }
+
+    void clear()
+    {
+        clearPixs();
+        REP(y, height) REP(x, width) mask[y][x] = BGD;
+        initMask = false;
+        isRectInit = false;
+        fgdSeeds.clear(); bgdSeeds.clear();
         inProgress = false;
         iter = 0;
     }
@@ -99,45 +131,31 @@ public:
     void initIter()
     {
         calcBeta();
-        int x1 = min(rect.x, 0), y1 = min(rect.y, 0);
-        int x2 = min(x1 + rect.width, width), y2 = min(y1 + rect.height, height);
-        mask = new Matte * [height];
-        REP(y, height)
-        {
-            mask[y] = new Matte[width];
-            REP(x, width)
-            {
-                if (x1 <= x && x <= x2 && y1 <= y && y <= y2)
-                {
-                    mask[y][x] = FGD;
-                    fgdPixs.push_back(img.at<Vec3d>(y, x));
-                    fgdPos.push_back(make_pair(x, y));
-                }
-                else
-                {
-                    mask[y][x] = BGD;
-                    bgdPixs.push_back(img.at<Vec3d>(y, x));
-                    bgdPos.push_back(make_pair(x, y));
-                }
-            }
-        }
-        bgdComp = bgdModel.init_components(bgdPixs);
-        fgdComp = fgdModel.init_components(fgdPixs);
+        int x1 = max(rect.x, 0), y1 = max(rect.y, 0);
+        int x2 = min(x1 + rect.width, width-1), y2 = min(y1 + rect.height, height-1);
+        D(cerr << "rect = " << x1 << " " << y1 << " " << x2 << " " << y2 << "\n");
+        For(y, y1, y2) For(x, x1, x2)
+            mask[y][x] = PR_FGD;
+        rebuildPixs();
+        bgdModel.init_components(bgdPixs, bgdComp);
+        fgdModel.init_components(fgdPixs, fgdComp);
     }
 
     void nextIter() 
     {
         if (!iter) initIter();
+        if (initMask) rebuildPixs();
         assignGMM(bgdPixs, bgdComp, bgdModel);
         assignGMM(fgdPixs, fgdComp, fgdModel);
         bgdModel.learn(bgdPixs, bgdComp);
         fgdModel.learn(fgdPixs, fgdComp);
         buildGraph();
         graphCut();
+        showOutput();
         iter++;
     }
 
-    void assignGMM(const vector<Vec3d>& pixels, VecIndex components, GMM &model)
+    void assignGMM(const vector<Vec3b>& pixels, VecIndex &components, GMM &model)
     {
         REP(i, pixels.size())
             components[i] = model.get_component(pixels[i]);
@@ -145,19 +163,135 @@ public:
 
     void calcBeta()
     {
-
+        double dist = 0.0;
+        edgeNum = 0;
+        //D(cerr << img << '\n');
+        REP(y, height) REP(x, width)
+        {
+            REP(k, 4)
+            {
+                int u = x + dx[k], v = y + dy[k];
+                if (u >= 0 && v >= 0 && u < width && v < height)
+                {
+                    //D(cerr << x << ' ' << y << ' ' << u << ' ' << v << "\n");
+                    auto diff = img.at<Vec3b>(y, x) - img.at<Vec3b>(v, u);
+                    REP(t, 3) dist += (double)diff[t] * diff[t];
+                    edgeNum++;
+                }
+            }
+        }
+        beta = 0.5 / (dist / edgeNum);
+        D(cerr << "beta = " << beta << "\n");
     }
+
+    inline int to1DCoord(int x, int y) { return y * width + x; }
 
     void buildGraph()
     {
+        D(cerr << "Building graph...\n");
+        nodeNum = height * width;
+        edgeNum += 2 * nodeNum;
+        g = new GraphType(nodeNum, edgeNum);
+        REP(i, nodeNum) g->add_node();
+        REP(y, height) REP(x, width)
+        {
+            int s = to1DCoord(x, y);
+            auto pixel = img.at<Vec3b>(y, x);
+            // calc T-links
+            double bgd_w = 0, fgd_w = 0;
+            if (mask[y][x] == BGD)
+            {
+                bgd_w = maxEdge, fgd_w = 0;
+            }
+            else if (mask[y][x] == FGD)
+            {
+                bgd_w = 0; fgd_w = maxEdge;
+            }
+            else
+            {
+                bgd_w = -log(fgdModel.model_likelihood(pixel)); 
+                fgd_w = -log(bgdModel.model_likelihood(pixel));
+                //D(cerr << "t_weights = " << bgd_w << " " << fgd_w << "\n");
+            }
+            g->add_tweights(s, bgd_w, fgd_w);
 
+            // calc N-links     
+            REP(k, 4)
+            {
+                int u = x + dx[k], v = y + dy[k];
+                if (u >= 0 && v >= 0 && u < width && v < height)
+                {
+                    int t = to1DCoord(u, v);
+                    auto diff = pixel - img.at<Vec3b>(v, u);
+                    double mult = 0;
+                    REP(t, 3) mult += (double)diff[t] * diff[t];
+                    double w = gamma * dis[k] * exp(-beta * mult);
+                    g->add_edge(s, t, w, w);
+                    //D(cerr << "n_weights = " << w << "\n");
+                }
+            }
+        }
+        D(cerr << "Done building graph\n");
+    }
+
+    inline void addBGDPix(int x, int y)
+    {
+        bgdPixs.push_back(img.at<Vec3b>(y, x));
+        bgdPos.push_back(make_pair(x, y));
+        bgdComp.push_back(0);
+    }
+
+    inline void addFGDPix(int x, int y)
+    {
+        fgdPixs.push_back(img.at<Vec3b>(y, x));
+        fgdPos.push_back(make_pair(x, y));
+        fgdComp.push_back(0);
     }
 
     void graphCut()
     {
+        D(cerr << "Doing graph cut...\n");
+        double flow = g->maxflow();
+        
+        REP(i, nodeNum)
+        {
+            int y = i / width, x = i % width;
+            if (mask[y][x] != BGD && mask[y][x] != FGD)
+                if (g->what_segment(i) == GraphType::SOURCE)
+                    mask[y][x] = PR_BGD;
+                else
+                    mask[y][x] = PR_FGD;
+            
+        }
+        D(cerr << "Done graph cut\n");
+    }
+
+    void rebuildPixs()
+    {
+        clearPixs();
+        for (auto p : bgdSeeds) mask[p.y][p.x] = BGD;
+        for (auto p : fgdSeeds) mask[p.y][p.x] = FGD;
+        REP(y, height) REP(x, width)
+            if (mask[y][x] == BGD || mask[y][x] == PR_BGD)
+                addBGDPix(x, y);
+            else
+                addFGDPix(x, y);
 
     }
 
+    void saveResult(string outPath)
+    {
+        cerr << outPath << "\n";
+        Mat res;
+        this->img.copyTo(res);
+        REP(y, height) REP(x, width)
+        {
+            if (mask[y][x] == BGD || mask[y][x] == PR_BGD)
+                res.at<Vec3b>(y, x) = Vec3b(0, 0, 0);
+        }
+        imwrite(outPath, res);
+        D(cerr << "result saved to " + outPath << "\n");
+    }
     void on_mouse(int event, int x, int y, int flags, void* param);
 
 };
@@ -202,12 +336,16 @@ void GrabCut::on_mouse(int event, int x, int y, int flags, void* param)
         if (mode == DRAW_RECT)
         {
             rect = Rect(Point(rect.x, rect.y), Point(x, y));
-            D(cerr << rect);
+            D(cerr << rect << "\n");
         }
         else if (mode == ADD_BGD_SEED)
-            addBGDSeed(Point(x, y));
+        {
+            addBGDSeed(Point(x, y)); initMask = true;
+        }
         else if (gc->mode == ADD_FGD_SEED)
-            addFGDSeed(Point(x, y));
+        {
+            addFGDSeed(Point(x, y)); initMask = true;
+        }
         inProgress = false;
         showInput();
     }
@@ -223,9 +361,9 @@ int main(int argc, char* argv[])
 	const string keys = 
         "{help h usage ? |      | print this message   }"
         "{@input         |lena.jpg| input image   }"
-        "{clusters k     | 5    | GMMs cluster number }"
-        "{output o       |result.jpg| output image   }"
-        "{count c        | 0    | interation counts, set 0 to run until converge }"
+        "{clusters     | 5    | GMMs cluster number }"
+        "{output       |result.jpg| output image   }"
+        "{count        | 0    | interation counts, set 0 to run until converge }"
         ;
 	CommandLineParser parser(argc, argv, keys);
     if (parser.has("help")) 
@@ -238,6 +376,10 @@ int main(int argc, char* argv[])
     outPath = parser.get<string>("output");
     nCluster = parser.get<int>("clusters");
     iterCount = parser.get<int>("count");
+    D(cerr << "inPath = " + inPath << "\n");
+    D(cerr << "outPath = " + outPath << "\n");
+    D(cerr << "nCluster = " << nCluster << "\n");
+    D(cerr << "iterCount = " << iterCount << "\n");
     Mat img = imread(inPath, IMREAD_COLOR);
     imshow("Input", img);
     setMouseCallback("Input", on_mouse, 0);
@@ -266,6 +408,7 @@ int main(int argc, char* argv[])
             break;
         case 'n':
             gc->nextIter();
+            break;
         case 'q':
             cout << "Exiting...";
             destroyAllWindows();
@@ -274,6 +417,10 @@ int main(int argc, char* argv[])
             D(cerr << "Clear input\n");
             gc->clear();
             gc->showInput();
+            break;
+        case 's':
+            gc->saveResult(outPath);
+            break;
         }
     }
 }
