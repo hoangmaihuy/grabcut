@@ -3,8 +3,8 @@ import time
 import cv2 as cv
 import numpy as np
 from enum import IntEnum
-from src.GMM import GaussianMixtureModel
-from src.GCGraph import GCGraph
+from GMM import GaussianMixtureModel
+from GCGraph import GCGraph
 
 class Color:
     Black = [0, 0, 0]
@@ -45,7 +45,7 @@ class GrabCut(object):
     - Create foreground and background GMMs based off the sets previously defined.
     '''
     @timeit
-    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=False):
+    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=True):
         self.imagePath = imagePath
         self.img = cv.imread(imagePath)
         self.imgShape = self.img.shape[:2]

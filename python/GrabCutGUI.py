@@ -5,8 +5,8 @@ from enum import IntEnum
 from PyQt5.QtWidgets import QFileDialog, QApplication, QMainWindow, QGraphicsScene
 from PyQt5.QtGui import QPixmap, QPen, QColor, QPainterPath, QBrush
 from PyQt5.QtCore import QRectF, QLineF, QPointF
-from src.GrabCut import GrabCut, Trimap
-from src.GrabCutQtDesignerUI import Ui_MainWindow
+from GrabCut import GrabCut, Trimap
+from GrabCutQtDesignerUI import Ui_MainWindow
 
 
 class EditMode(IntEnum):

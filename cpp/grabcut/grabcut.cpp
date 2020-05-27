@@ -37,9 +37,10 @@ class GrabCut
 public:
     static const int radius = 2;
     static const int thickness = -1;
-    const int dx[4] = { 1, -1, 0, 1 };
+    static const int neighbor_num = 8;
+    const int dx[4] = { 1, 0, -1, 1 };
     const int dy[4] = { 0, 1, 1, 1 };
-    const double dis[4] = { 1, 1.0/sqrt(2), 1, 1.0/sqrt(2) };
+    const double dis[4] = { 1, 1, 1.0 / sqrt(2), 1.0/sqrt(2) };
     GraphType* g;
     int width, height, nCluster, iterCount, edgeNum, nodeNum;
     const double gamma = 50.0, maxEdge = 500.0;
@@ -143,6 +144,7 @@ public:
 
     void nextIter() 
     {
+        D(cerr << "iter: " << iter << "\n");
         if (!iter) initIter();
         if (initMask) rebuildPixs();
         assignGMM(bgdPixs, bgdComp, bgdModel);
@@ -165,10 +167,9 @@ public:
     {
         double dist = 0.0;
         edgeNum = 0;
-        //D(cerr << img << '\n');
         REP(y, height) REP(x, width)
         {
-            REP(k, 4)
+            REP(k, neighbor_num / 2)
             {
                 int u = x + dx[k], v = y + dy[k];
                 if (u >= 0 && v >= 0 && u < width && v < height)
@@ -216,7 +217,7 @@ public:
             g->add_tweights(s, bgd_w, fgd_w);
 
             // calc N-links     
-            REP(k, 4)
+            REP(k, neighbor_num/2)
             {
                 int u = x + dx[k], v = y + dy[k];
                 if (u >= 0 && v >= 0 && u < width && v < height)
@@ -225,7 +226,10 @@ public:
                     auto diff = pixel - img.at<Vec3b>(v, u);
                     double mult = 0;
                     REP(t, 3) mult += (double)diff[t] * diff[t];
+                    //with inverse distance
                     double w = gamma * dis[k] * exp(-beta * mult);
+                    // without inverse distance
+                    // double w = gamma * exp(-beta * mult);
                     g->add_edge(s, t, w, w);
                     //D(cerr << "n_weights = " << w << "\n");
                 }
@@ -363,7 +367,7 @@ int main(int argc, char* argv[])
         "{@input         |lena.jpg| input image   }"
         "{clusters     | 5    | GMMs cluster number }"
         "{output       |result.jpg| output image   }"
-        "{count        | 0    | interation counts, set 0 to run until converge }"
+        "{count        | 1    | interation counts}"
         ;
 	CommandLineParser parser(argc, argv, keys);
     if (parser.has("help")) 

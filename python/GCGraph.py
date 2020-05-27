@@ -71,7 +71,7 @@ class GCGraph(object):
 			elif mask[i] == Trimap.FGD:
 				bgd_w, fgd_w = 0, self.largest_weight
 			else:
-				bgd_w, fgd_w = bgdModel.model_likelihood(self.pixels[i]), fgdModel.model_likelihood(self.pixels[i])
+				bgd_w, fgd_w = -np.log(bgdModel.model_likelihood(self.pixels[i])), -np.log(fgdModel.model_likelihood(self.pixels[i]))
 				# print("t-links: ", i, bgd_w, fgd_w)
 			self.graph.add_tedge(i, bgd_w, fgd_w)
 
