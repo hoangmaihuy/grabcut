@@ -210,8 +210,12 @@ public:
             }
             else
             {
+                /* our version */
                 bgd_w = -log(fgdModel.model_likelihood(pixel)); 
                 fgd_w = -log(bgdModel.model_likelihood(pixel));
+                /* paper version */
+                //bgd_w = fgdModel.model_likelihood(pixel); 
+                //fgd_w = bgdModel.model_likelihood(pixel);
                 //D(cerr << "t_weights = " << bgd_w << " " << fgd_w << "\n");
             }
             g->add_tweights(s, bgd_w, fgd_w);
