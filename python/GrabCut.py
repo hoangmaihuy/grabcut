@@ -45,7 +45,7 @@ class GrabCut(object):
     - Create foreground and background GMMs based off the sets previously defined.
     '''
     @timeit
-    def __init__(self, imagePath, n_components=5, iterCount=5, useCV=True):
+    def __init__(self, imagePath, n_components=5, iterCount=1, useCV=True):
         self.imagePath = imagePath
         self.img = cv.imread(imagePath)
         self.imgShape = self.img.shape[:2]
@@ -68,7 +68,7 @@ class GrabCut(object):
         self.trimap_ukn = None
         self.matte_bgd = None
         self.matte_fgd = None
-        self.graph = GCGraph(self.img)
+        #self.graph = GCGraph(self.img)
 
     @timeit
     def init_with_rect(self, rect):
@@ -129,8 +129,8 @@ class GrabCut(object):
             mode = 0
             if init_mask is not None:
                 mode = cv.GC_INIT_WITH_MASK
-                self.mask[init_mask == Trimap.B] = cv.GC_BGD
-                self.mask[init_mask == Trimap.F] = cv.GC_FGD
+                self.mask[init_mask == Trimap.BGD] = cv.GC_BGD
+                self.mask[init_mask == Trimap.FGD] = cv.GC_FGD
             if rect is not None:
                 mode = cv.GC_INIT_WITH_RECT
                 self.bgdModel = np.zeros((1, 65), np.float64)

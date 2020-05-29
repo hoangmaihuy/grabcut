@@ -11,7 +11,7 @@ typedef vector<Index> VecIndex;
 class GMM
 {
 public:
-	const static int K = 1;
+	const static int K = 5;
 	double weight[K];
 	double mean[K][3];
 	double cov[K][3][3];

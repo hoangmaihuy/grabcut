@@ -43,7 +43,7 @@ public:
     const double dis[4] = { 1, 1, 1.0 / sqrt(2), 1.0/sqrt(2) };
     GraphType* g;
     int width, height, nCluster, iterCount, edgeNum, nodeNum;
-    const double gamma = 50.0, maxEdge = 500.0;
+    const double gamma = 50.0, maxEdge = gamma * 8;
     double beta;
     Rect rect;
     EditMode mode;

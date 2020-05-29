@@ -152,6 +152,7 @@ class GrabCutGUI(object):
         self.ImageViewer.rect = None
         self.ImageViewer.mask = None
         self.ImageViewer.clear()
+        self.grabcut = None
 
     def runGrabCut(self):
         if self.grabcut is None:
